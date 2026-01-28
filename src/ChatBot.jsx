@@ -64,7 +64,23 @@ const ChatBot = () => {
     setChatHistory(updatedChatHistory);
 
     // Step 2: Set up API configuration
-    const API_KEY = "API_Key"; // Google Gemini API key
+    const API_KEY = import.meta.env.VITE_GEMINI_API_KEY; // Google Gemini API key from environment
+
+    // Debug logging
+    console.log("API Key exists:", !!API_KEY);
+    console.log("API Key length:", API_KEY ? API_KEY.length : 0);
+
+    // Check if API key is configured
+    if (!API_KEY) {
+      setChatHistory((prevHistory) => [
+        ...prevHistory,
+        {
+          role: "model",
+          parts: [{ text: "API key not configured. Please check your .env file." }],
+        },
+      ]);
+      return;
+    }
 
     // Step 3: Prepare the payload for the API request
     const payload = {
@@ -76,19 +92,25 @@ const ChatBot = () => {
     };
 
     // Step 4: Construct the API endpoint URL
-    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`;
+    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${API_KEY}`;
 
     try {
       // Step 5: Make the HTTP POST request to Gemini API
+      console.log("Making API request to:", apiUrl.substring(0, 100) + "...");
       const response = await fetch(apiUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload), // Convert payload to JSON string
       });
 
+      console.log("Response status:", response.status);
+      console.log("Response ok:", response.ok);
+
       // Step 6: Check if the request was successful
       if (!response.ok) {
-        throw new Error(`API error: ${response.status}`);
+        const errorText = await response.text();
+        console.error(`API error: ${response.status} - ${errorText}`);
+        throw new Error(`API error: ${response.status} - ${response.statusText}`);
       }
 
       // Step 7: Parse the JSON response from the API
@@ -121,12 +143,26 @@ const ChatBot = () => {
       }
     } catch (error) {
       // Step 9: Handle any network or API errors
-      console.error("API Error:", error);
+      console.error("API Error details:", error);
+      console.error("Error message:", error.message);
+      console.error("Error stack:", error.stack);
+
+      let errorMessage = "Connection error. Please try again.";
+
+      // Provide more specific error messages
+      if (error.message.includes('404')) {
+        errorMessage = "API endpoint not found. Please check if the Gemini API is enabled for your key.";
+      } else if (error.message.includes('403')) {
+        errorMessage = "API key invalid or access denied. Please check your API key.";
+      } else if (error.message.includes('429')) {
+        errorMessage = "Rate limit exceeded. Please wait a moment and try again.";
+      }
+
       setChatHistory((prevHistory) => [
         ...prevHistory,
         {
           role: "model",
-          parts: [{ text: "Connection error. Please try again." }],
+          parts: [{ text: errorMessage }],
         },
       ]);
     }
@@ -176,11 +212,11 @@ const ChatBot = () => {
   };
 
   /**
-   * handleKeyPress - Handles keyboard input in the text field
+   * handleKeyDown - Handles keyboard input in the text field
    * Allows users to send messages by pressing Enter
    * Shift+Enter allows multi-line messages (though we use input, not textarea)
    */
-  const handleKeyPress = (e) => {
+  const handleKeyDown = (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault(); // Prevent default Enter behavior
       sendMessage(); // Send the message
@@ -208,16 +244,14 @@ const ChatBot = () => {
           {chatHistory.map((msg, index) => (
             <div
               key={index}
-              className={`flex ${
-                msg.role === "user" ? "justify-end" : "justify-start"
-              }`}
+              className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"
+                }`}
             >
               <div
-                className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
-                  msg.role === "user"
-                    ? "bg-blue-600 text-white"
-                    : "bg-white text-gray-800 border border-gray-200"
-                }`}
+                className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${msg.role === "user"
+                  ? "bg-blue-600 text-white"
+                  : "bg-white text-gray-800 border border-gray-200"
+                  }`}
               >
                 {msg.parts[0].text}
               </div>
@@ -253,7 +287,7 @@ const ChatBot = () => {
               className="flex-1 p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               value={userInput}
               onChange={(e) => setUserInput(e.target.value)}
-              onKeyPress={handleKeyPress}
+              onKeyDown={handleKeyDown}
               disabled={isLoading}
             />
             <button
